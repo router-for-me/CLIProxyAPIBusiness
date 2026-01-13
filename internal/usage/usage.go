@@ -354,7 +354,7 @@ func calculateCost(ctx context.Context, db *gorm.DB, apiKeyID, userID, authID *u
 	if authID != nil {
 		var auth models.Auth
 		if errFindAuth := db.WithContext(ctx).Select("auth_group_id").First(&auth, *authID).Error; errFindAuth == nil {
-			authGroupID = auth.AuthGroupID
+			authGroupID = auth.AuthGroupID.Primary()
 		}
 	}
 

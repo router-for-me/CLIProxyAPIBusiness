@@ -75,6 +75,9 @@ func migratePostgres(conn *gorm.DB) error {
 	if errSeed := ensureAutoAssignProxySetting(conn); errSeed != nil {
 		return errSeed
 	}
+	if errAuthGroup := migrateAuthGroupIDsPostgres(conn); errAuthGroup != nil {
+		return errAuthGroup
+	}
 
 	if errDropRuleType := conn.Exec(`
 		ALTER TABLE model_payload_rules
@@ -293,6 +296,20 @@ func migratePostgres(conn *gorm.DB) error {
 			sql: `
 				CREATE INDEX IF NOT EXISTS idx_auths_updated_at_id
 				ON auths (updated_at DESC, id DESC)
+			`,
+		},
+		{
+			name: "idx_auths_auth_group_id",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_auths_auth_group_id
+				ON auths (auth_group_id)
+			`,
+		},
+		{
+			name: "idx_auths_auth_group_id",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_auths_auth_group_id
+				ON auths USING gin (auth_group_id)
 			`,
 		},
 		{
@@ -950,6 +967,91 @@ func migrateSQLite(conn *gorm.DB) error {
 		}
 	}
 
+	return nil
+}
+
+func migrateAuthGroupIDsPostgres(conn *gorm.DB) error {
+	if conn == nil {
+		return fmt.Errorf("db: migrate auth group ids: nil connection")
+	}
+	if errAlter := conn.Exec(`
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_name = 'auths'
+				AND column_name = 'auth_group_id'
+				AND data_type <> 'jsonb'
+			) THEN
+				ALTER TABLE auths
+					ALTER COLUMN auth_group_id TYPE jsonb
+					USING CASE
+						WHEN auth_group_id IS NULL THEN '[]'::jsonb
+						ELSE to_jsonb(ARRAY[auth_group_id])
+					END;
+			END IF;
+		END $$;
+	`).Error; errAlter != nil {
+		return fmt.Errorf("db: migrate auth group ids: %w", errAlter)
+	}
+	if errNormalize := conn.Exec(`
+		UPDATE auths
+		SET auth_group_id = to_jsonb(ARRAY[auth_group_id::bigint])
+		WHERE jsonb_typeof(auth_group_id) = 'number'
+	`).Error; errNormalize != nil {
+		return fmt.Errorf("db: normalize auth group ids: %w", errNormalize)
+	}
+	if errBackfill := conn.Exec(`
+		UPDATE auths
+		SET auth_group_id = '[]'::jsonb
+		WHERE auth_group_id IS NULL
+	`).Error; errBackfill != nil {
+		return fmt.Errorf("db: backfill auth group ids: %w", errBackfill)
+	}
+	if errDefault := conn.Exec(`
+		ALTER TABLE auths
+		ALTER COLUMN auth_group_id SET DEFAULT '[]'::jsonb
+	`).Error; errDefault != nil {
+		return fmt.Errorf("db: default auth group ids: %w", errDefault)
+	}
+	if errNotNull := conn.Exec(`
+		ALTER TABLE auths
+		ALTER COLUMN auth_group_id SET NOT NULL
+	`).Error; errNotNull != nil {
+		return fmt.Errorf("db: enforce auth group ids not null: %w", errNotNull)
+	}
+	return nil
+}
+
+func migrateAuthGroupIDsSQLite(conn *gorm.DB) error {
+	if conn == nil {
+		return fmt.Errorf("db: migrate auth group ids: nil connection")
+	}
+	if errUpdate := conn.Exec(`
+		UPDATE auths
+		SET auth_group_id = printf('[%d]', auth_group_id)
+		WHERE auth_group_id IS NOT NULL
+		AND typeof(auth_group_id) IN ('integer', 'real')
+	`).Error; errUpdate != nil {
+		return fmt.Errorf("db: convert auth group ids: %w", errUpdate)
+	}
+	if errUpdate := conn.Exec(`
+		UPDATE auths
+		SET auth_group_id = '[' || auth_group_id || ']'
+		WHERE auth_group_id IS NOT NULL
+		AND typeof(auth_group_id) = 'text'
+		AND auth_group_id NOT LIKE '[%'
+	`).Error; errUpdate != nil {
+		return fmt.Errorf("db: normalize auth group ids: %w", errUpdate)
+	}
+	if errUpdate := conn.Exec(`
+		UPDATE auths
+		SET auth_group_id = '[]'
+		WHERE auth_group_id IS NULL
+	`).Error; errUpdate != nil {
+		return fmt.Errorf("db: backfill auth group ids: %w", errUpdate)
+	}
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,11 +32,11 @@ func NewAuthFileHandler(db *gorm.DB) *AuthFileHandler {
 
 // createAuthFileRequest defines the request body for auth file creation.
 type createAuthFileRequest struct {
-	Key         string         `json:"key"`
-	AuthGroupID *uint64        `json:"auth_group_id"`
-	ProxyURL    *string        `json:"proxy_url"`
-	Content     map[string]any `json:"content"`
-	IsAvailable *bool          `json:"is_available"`
+	Key         string              `json:"key"`
+	AuthGroupID models.AuthGroupIDs `json:"auth_group_id"`
+	ProxyURL    *string             `json:"proxy_url"`
+	Content     map[string]any      `json:"content"`
+	IsAvailable *bool               `json:"is_available"`
 }
 
 type importAuthFilesFailure struct {
@@ -90,12 +91,14 @@ func (h *AuthFileHandler) Create(c *gin.Context) {
 	}
 
 	now := time.Now().UTC()
+	authGroupIDs := body.AuthGroupID.Clean()
 	if body.AuthGroupID == nil {
 		var defaultGroup models.AuthGroup
 		if errFind := h.db.WithContext(c.Request.Context()).
 			Where("is_default = ?", true).
 			First(&defaultGroup).Error; errFind == nil {
-			body.AuthGroupID = &defaultGroup.ID
+			defaultGroupID := defaultGroup.ID
+			authGroupIDs = models.AuthGroupIDs{&defaultGroupID}
 		} else if !errors.Is(errFind, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "query default auth group failed"})
 			return
@@ -103,7 +106,7 @@ func (h *AuthFileHandler) Create(c *gin.Context) {
 	}
 	auth := models.Auth{
 		Key:         key,
-		AuthGroupID: body.AuthGroupID,
+		AuthGroupID: authGroupIDs,
 		ProxyURL:    proxyURL,
 		Content:     contentJSON,
 		IsAvailable: isAvailable,
@@ -123,7 +126,7 @@ func (h *AuthFileHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"id":            auth.ID,
 		"key":           auth.Key,
-		"auth_group_id": auth.AuthGroupID,
+		"auth_group_id": auth.AuthGroupID.Clean(),
 		"proxy_url":     auth.ProxyURL,
 		"content":       auth.Content,
 		"is_available":  auth.IsAvailable,
@@ -146,22 +149,25 @@ func (h *AuthFileHandler) Import(c *gin.Context) {
 		return
 	}
 
-	var authGroupID *uint64
-	if groupValue := strings.TrimSpace(c.PostForm("auth_group_id")); groupValue != "" {
-		parsed, errParse := strconv.ParseUint(groupValue, 10, 64)
+	var authGroupIDs models.AuthGroupIDs
+	groupValue := strings.TrimSpace(c.PostForm("auth_group_id"))
+	groupProvided := groupValue != ""
+	if groupProvided {
+		parsedIDs, errParse := parseAuthGroupIDsInput(groupValue)
 		if errParse != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid auth group id"})
 			return
 		}
-		authGroupID = &parsed
+		authGroupIDs = parsedIDs.Clean()
 	}
 
-	if authGroupID == nil {
+	if !groupProvided {
 		var defaultGroup models.AuthGroup
 		if errFind := h.db.WithContext(c.Request.Context()).
 			Where("is_default = ?", true).
 			First(&defaultGroup).Error; errFind == nil {
-			authGroupID = &defaultGroup.ID
+			defaultGroupID := defaultGroup.ID
+			authGroupIDs = models.AuthGroupIDs{&defaultGroupID}
 		} else if !errors.Is(errFind, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "query default auth group failed"})
 			return
@@ -276,7 +282,7 @@ func (h *AuthFileHandler) Import(c *gin.Context) {
 
 		auth := models.Auth{
 			Key:         key,
-			AuthGroupID: authGroupID,
+			AuthGroupID: authGroupIDs,
 			ProxyURL:    proxyURL,
 			Content:     datatypes.JSON(contentBytes),
 			IsAvailable: true,
@@ -315,14 +321,14 @@ func (h *AuthFileHandler) List(c *gin.Context) {
 		typeQ        = strings.TrimSpace(c.Query("type"))
 	)
 
-	q := h.db.WithContext(c.Request.Context()).Model(&models.Auth{}).Preload("AuthGroup")
+	q := h.db.WithContext(c.Request.Context()).Model(&models.Auth{})
 	if keyQ != "" {
 		pattern := dbutil.NormalizeLikePattern(h.db, "%"+keyQ+"%")
 		q = q.Where(dbutil.CaseInsensitiveLikeExpr(h.db, "key"), pattern)
 	}
 	if authGroupIDQ != "" {
 		if id, errParse := strconv.ParseUint(authGroupIDQ, 10, 64); errParse == nil {
-			q = q.Where("auth_group_id = ?", id)
+			q = q.Where(dbutil.JSONArrayContainsExpr(h.db, "auth_group_id"), dbutil.JSONArrayContainsValue(h.db, id))
 		}
 	}
 	if typeQ != "" {
@@ -336,24 +342,26 @@ func (h *AuthFileHandler) List(c *gin.Context) {
 		return
 	}
 
+	groupMap, errGroups := loadAuthGroupMap(c.Request.Context(), h.db, rows)
+	if errGroups != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "load auth groups failed"})
+		return
+	}
+
 	out := make([]gin.H, 0, len(rows))
 	for _, row := range rows {
+		authGroupIDs := row.AuthGroupID.Clean()
 		item := gin.H{
 			"id":            row.ID,
 			"key":           row.Key,
-			"auth_group_id": row.AuthGroupID,
+			"auth_group_id": authGroupIDs,
 			"proxy_url":     row.ProxyURL,
 			"content":       row.Content,
 			"is_available":  row.IsAvailable,
 			"created_at":    row.CreatedAt,
 			"updated_at":    row.UpdatedAt,
 		}
-		if row.AuthGroup != nil {
-			item["auth_group"] = gin.H{
-				"id":   row.AuthGroup.ID,
-				"name": row.AuthGroup.Name,
-			}
-		}
+		item["auth_group"] = buildAuthGroupSummaries(authGroupIDs, groupMap)
 		out = append(out, item)
 	}
 	c.JSON(http.StatusOK, gin.H{"auth_files": out})
@@ -368,7 +376,7 @@ func (h *AuthFileHandler) Get(c *gin.Context) {
 	}
 
 	var auth models.Auth
-	if errFind := h.db.WithContext(c.Request.Context()).Preload("AuthGroup").First(&auth, id).Error; errFind != nil {
+	if errFind := h.db.WithContext(c.Request.Context()).First(&auth, id).Error; errFind != nil {
 		if errors.Is(errFind, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
@@ -377,32 +385,33 @@ func (h *AuthFileHandler) Get(c *gin.Context) {
 		return
 	}
 
+	authGroupIDs := auth.AuthGroupID.Clean()
+	groupMap, errGroups := loadAuthGroupMap(c.Request.Context(), h.db, []models.Auth{auth})
+	if errGroups != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "load auth groups failed"})
+		return
+	}
 	item := gin.H{
 		"id":            auth.ID,
 		"key":           auth.Key,
-		"auth_group_id": auth.AuthGroupID,
+		"auth_group_id": authGroupIDs,
 		"proxy_url":     auth.ProxyURL,
 		"content":       auth.Content,
 		"is_available":  auth.IsAvailable,
 		"created_at":    auth.CreatedAt,
 		"updated_at":    auth.UpdatedAt,
 	}
-	if auth.AuthGroup != nil {
-		item["auth_group"] = gin.H{
-			"id":   auth.AuthGroup.ID,
-			"name": auth.AuthGroup.Name,
-		}
-	}
+	item["auth_group"] = buildAuthGroupSummaries(authGroupIDs, groupMap)
 	c.JSON(http.StatusOK, item)
 }
 
 // updateAuthFileRequest defines the request body for auth file updates.
 type updateAuthFileRequest struct {
-	Key         *string        `json:"key"`
-	AuthGroupID *uint64        `json:"auth_group_id"`
-	ProxyURL    *string        `json:"proxy_url"`
-	Content     map[string]any `json:"content"`
-	IsAvailable *bool          `json:"is_available"`
+	Key         *string              `json:"key"`
+	AuthGroupID *models.AuthGroupIDs `json:"auth_group_id"`
+	ProxyURL    *string              `json:"proxy_url"`
+	Content     map[string]any       `json:"content"`
+	IsAvailable *bool                `json:"is_available"`
 }
 
 // Update modifies an auth file entry.
@@ -426,7 +435,7 @@ func (h *AuthFileHandler) Update(c *gin.Context) {
 		updates["key"] = strings.TrimSpace(*body.Key)
 	}
 	if body.AuthGroupID != nil {
-		updates["auth_group_id"] = body.AuthGroupID
+		updates["auth_group_id"] = body.AuthGroupID.Clean()
 	}
 	if body.ProxyURL != nil {
 		updates["proxy_url"] = strings.TrimSpace(*body.ProxyURL)
@@ -531,4 +540,86 @@ func (h *AuthFileHandler) ListTypes(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"types": types})
+}
+
+func parseAuthGroupIDsInput(value string) (models.AuthGroupIDs, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		var list []uint64
+		if errUnmarshal := json.Unmarshal([]byte(trimmed), &list); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
+		return authGroupIDsFromValues(list), nil
+	}
+	parsed, errParse := strconv.ParseUint(trimmed, 10, 64)
+	if errParse != nil {
+		return nil, errParse
+	}
+	return authGroupIDsFromValues([]uint64{parsed}), nil
+}
+
+func authGroupIDsFromValues(values []uint64) models.AuthGroupIDs {
+	if len(values) == 0 {
+		return models.AuthGroupIDs{}
+	}
+	out := make(models.AuthGroupIDs, 0, len(values))
+	for _, value := range values {
+		if value == 0 {
+			continue
+		}
+		idCopy := value
+		out = append(out, &idCopy)
+	}
+	if len(out) == 0 {
+		return models.AuthGroupIDs{}
+	}
+	return out
+}
+
+func loadAuthGroupMap(ctx context.Context, db *gorm.DB, rows []models.Auth) (map[uint64]models.AuthGroup, error) {
+	groupIDs := make([]uint64, 0)
+	seen := make(map[uint64]struct{})
+	for _, row := range rows {
+		for _, id := range row.AuthGroupID.Values() {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			groupIDs = append(groupIDs, id)
+		}
+	}
+	if len(groupIDs) == 0 {
+		return map[uint64]models.AuthGroup{}, nil
+	}
+	var groups []models.AuthGroup
+	if errFind := db.WithContext(ctx).Where("id IN ?", groupIDs).Find(&groups).Error; errFind != nil {
+		return nil, errFind
+	}
+	groupMap := make(map[uint64]models.AuthGroup, len(groups))
+	for _, group := range groups {
+		groupMap[group.ID] = group
+	}
+	return groupMap, nil
+}
+
+func buildAuthGroupSummaries(ids models.AuthGroupIDs, groupMap map[uint64]models.AuthGroup) []gin.H {
+	values := ids.Values()
+	if len(values) == 0 {
+		return []gin.H{}
+	}
+	out := make([]gin.H, 0, len(values))
+	for _, id := range values {
+		group, ok := groupMap[id]
+		if !ok {
+			continue
+		}
+		out = append(out, gin.H{
+			"id":   group.ID,
+			"name": group.Name,
+		})
+	}
+	return out
 }

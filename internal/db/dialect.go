@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -50,4 +51,20 @@ func JSONExtractTextExpr(conn *gorm.DB, column, key string) string {
 		return fmt.Sprintf("json_extract(%s, '$.%s')", column, key)
 	}
 	return fmt.Sprintf("%s->>'%s'", column, key)
+}
+
+// JSONArrayContainsExpr returns a SQL expression to test JSON array containment.
+func JSONArrayContainsExpr(conn *gorm.DB, column string) string {
+	if IsSQLite(conn) {
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM json_each(%s) WHERE value = ?)", column)
+	}
+	return fmt.Sprintf("%s @> ?", column)
+}
+
+// JSONArrayContainsValue returns the bind value for JSON array containment checks.
+func JSONArrayContainsValue(conn *gorm.DB, value uint64) any {
+	if IsSQLite(conn) {
+		return value
+	}
+	return datatypes.JSON([]byte(fmt.Sprintf("[%d]", value)))
 }

@@ -83,7 +83,7 @@ func (h *QuotaHandler) List(c *gin.Context) {
 		base = base.Where("quota.type = ?", typeQ)
 	}
 	if groupID > 0 {
-		base = base.Where("auths.auth_group_id = ?", groupID)
+		base = base.Where(dbutil.JSONArrayContainsExpr(h.db, "auths.auth_group_id"), dbutil.JSONArrayContainsValue(h.db, groupID))
 	}
 
 	var total int64
@@ -100,7 +100,7 @@ func (h *QuotaHandler) List(c *gin.Context) {
 		typeQuery = typeQuery.Where(dbutil.CaseInsensitiveLikeExpr(h.db, "auths.key"), pattern)
 	}
 	if groupID > 0 {
-		typeQuery = typeQuery.Where("auths.auth_group_id = ?", groupID)
+		typeQuery = typeQuery.Where(dbutil.JSONArrayContainsExpr(h.db, "auths.auth_group_id"), dbutil.JSONArrayContainsValue(h.db, groupID))
 	}
 	var types []string
 	if errTypes := typeQuery.Distinct("quota.type").Order("quota.type ASC").Pluck("quota.type", &types).Error; errTypes != nil {

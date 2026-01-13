@@ -9,7 +9,7 @@ type AuthGroup struct {
 	Name      string `gorm:"type:text;not null;uniqueIndex"` // Display name.
 	IsDefault bool   `gorm:"not null;default:false"`         // Marks the default group.
 
-	Auths []Auth `gorm:"foreignKey:AuthGroupID"` // Related auth records.
+	Auths []Auth `gorm:"-"` // Related auth records (not persisted).
 
 	CreatedAt time.Time `gorm:"not null;autoCreateTime"` // Creation timestamp.
 	UpdatedAt time.Time `gorm:"not null;autoUpdateTime"` // Last update timestamp.
