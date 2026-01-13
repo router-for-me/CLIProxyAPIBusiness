@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -413,8 +414,15 @@ func (h *ProviderAPIKeyHandler) syncSDKConfig(ctx context.Context) error {
 	if h == nil || h.db == nil {
 		return errors.New("missing db")
 	}
-	if strings.TrimSpace(h.configPath) == "" {
-		return errors.New("missing config path")
+	configPath := strings.TrimSpace(h.configPath)
+	if configPath == "" {
+		return nil
+	}
+	if _, errStat := os.Stat(configPath); errStat != nil {
+		if os.IsNotExist(errStat) {
+			return nil
+		}
+		return errStat
 	}
 
 	var rows []models.ProviderAPIKey
@@ -431,7 +439,7 @@ func (h *ProviderAPIKeyHandler) syncSDKConfig(ctx context.Context) error {
 		return errFindMappings
 	}
 
-	cfg, errLoad := sdkconfig.LoadConfig(h.configPath)
+	cfg, errLoad := sdkconfig.LoadConfig(configPath)
 	if errLoad != nil {
 		return errLoad
 	}
@@ -510,7 +518,7 @@ func (h *ProviderAPIKeyHandler) syncSDKConfig(ctx context.Context) error {
 	cfg.SanitizeClaudeKeys()
 	cfg.SanitizeOpenAICompatibility()
 
-	return sdkconfig.SaveConfigPreserveComments(h.configPath, cfg)
+	return sdkconfig.SaveConfigPreserveComments(configPath, cfg)
 }
 
 // buildOAuthModelMappings converts model mappings into SDK config entries.

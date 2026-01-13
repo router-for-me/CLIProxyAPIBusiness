@@ -22,6 +22,7 @@ import (
 	internalaccess "github.com/router-for-me/CLIProxyAPIBusiness/internal/access"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/modelmapping"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/models"
+	"github.com/router-for-me/CLIProxyAPIBusiness/internal/providerkeys"
 	internalsettings "github.com/router-for-me/CLIProxyAPIBusiness/internal/settings"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/datatypes"
@@ -114,6 +115,14 @@ type dbWatcher struct {
 	mappingLatestAt  time.Time
 	mappingLatestID  uint64
 	mappingHasLatest bool
+
+	// provider key snapshot (stored in ProviderAPIKey + ModelMapping tables)
+	providerLatestAt  time.Time
+	providerLatestID  uint64
+	providerHasLatest bool
+	oauthLatestAt     time.Time
+	oauthLatestID     uint64
+	oauthHasLatest    bool
 
 	// dispatch queue
 	queueMu sync.RWMutex
@@ -249,6 +258,7 @@ func (w *dbWatcher) DispatchRuntimeAuthUpdate(_ reflect.Value) bool {
 // run executes the periodic polling loop until the context is canceled.
 func (w *dbWatcher) run(ctx context.Context) {
 	w.pollConfig(ctx)
+	w.pollProviderKeys(ctx, true)
 	w.pollAuth(ctx, true)
 	w.pollSettings(ctx, true)
 	w.pollPayloadRules(ctx, true)
@@ -262,6 +272,7 @@ func (w *dbWatcher) run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			w.pollConfig(ctx)
+			w.pollProviderKeys(ctx, false)
 			w.pollAuth(ctx, w.consumeForceAuth())
 			w.pollSettings(ctx, false)
 			w.pollPayloadRules(ctx, false)
@@ -308,6 +319,136 @@ func (w *dbWatcher) pollConfig(ctx context.Context) {
 	}
 
 	w.markForceAuth()
+}
+
+// pollProviderKeys rebuilds provider API key config from DB when it changes.
+func (w *dbWatcher) pollProviderKeys(ctx context.Context, force bool) {
+	if w == nil || w.db == nil {
+		return
+	}
+	qctx, cancel := context.WithTimeout(ctx, defaultQueryTimeout)
+	defer cancel()
+
+	type latestRow struct {
+		ID        uint64     `gorm:"column:id"`
+		UpdatedAt *time.Time `gorm:"column:updated_at"`
+	}
+
+	var latestProvider latestRow
+	hasProvider := false
+	errProvider := w.db.WithContext(qctx).
+		Model(&models.ProviderAPIKey{}).
+		Select("id", "updated_at").
+		Order("updated_at DESC, id DESC").
+		Limit(1).
+		Take(&latestProvider).Error
+	if errProvider != nil {
+		if errors.Is(errProvider, context.Canceled) {
+			return
+		}
+		if errors.Is(errProvider, gorm.ErrRecordNotFound) {
+			hasProvider = false
+		} else {
+			log.WithError(errProvider).Warn("db watcher: query provider api keys latest row failed")
+			return
+		}
+	} else {
+		hasProvider = true
+	}
+
+	var latestMapping latestRow
+	hasMapping := false
+	errMapping := w.db.WithContext(qctx).
+		Model(&models.ModelMapping{}).
+		Select("id", "updated_at").
+		Order("updated_at DESC, id DESC").
+		Limit(1).
+		Take(&latestMapping).Error
+	if errMapping != nil {
+		if errors.Is(errMapping, context.Canceled) {
+			return
+		}
+		if errors.Is(errMapping, gorm.ErrRecordNotFound) {
+			hasMapping = false
+		} else {
+			log.WithError(errMapping).Warn("db watcher: query oauth model mappings latest row failed")
+			return
+		}
+	} else {
+		hasMapping = true
+	}
+
+	providerAt := time.Time{}
+	providerID := uint64(0)
+	if hasProvider && latestProvider.UpdatedAt != nil {
+		providerAt = latestProvider.UpdatedAt.UTC()
+		providerID = latestProvider.ID
+	}
+
+	mappingAt := time.Time{}
+	mappingID := uint64(0)
+	if hasMapping && latestMapping.UpdatedAt != nil {
+		mappingAt = latestMapping.UpdatedAt.UTC()
+		mappingID = latestMapping.ID
+	}
+
+	if !force {
+		if w.providerHasLatest == hasProvider &&
+			w.oauthHasLatest == hasMapping &&
+			(!hasProvider || (providerAt.Equal(w.providerLatestAt) && providerID == w.providerLatestID)) &&
+			(!hasMapping || (mappingAt.Equal(w.oauthLatestAt) && mappingID == w.oauthLatestID)) {
+			return
+		}
+	}
+
+	var providerRows []models.ProviderAPIKey
+	if errFind := w.db.WithContext(qctx).
+		Order("id ASC").
+		Find(&providerRows).Error; errFind != nil {
+		if errors.Is(errFind, context.Canceled) {
+			return
+		}
+		log.WithError(errFind).Warn("db watcher: query provider api keys failed")
+		return
+	}
+
+	var mappingRows []models.ModelMapping
+	if errFindMappings := w.db.WithContext(qctx).
+		Model(&models.ModelMapping{}).
+		Where("is_enabled = ?", true).
+		Order("provider ASC, new_model_name ASC, model_name ASC").
+		Find(&mappingRows).Error; errFindMappings != nil {
+		if errors.Is(errFindMappings, context.Canceled) {
+			return
+		}
+		log.WithError(errFindMappings).Warn("db watcher: query oauth model mappings failed")
+		return
+	}
+
+	w.cfgMu.RLock()
+	baseCfg := w.cfg
+	w.cfgMu.RUnlock()
+	if baseCfg == nil {
+		baseCfg = &sdkconfig.Config{}
+	}
+	next := *baseCfg
+	providerkeys.ApplyToConfig(&next, providerRows, mappingRows)
+
+	w.cfgMu.Lock()
+	w.cfg = &next
+	w.cfgMu.Unlock()
+
+	if w.reload != nil {
+		w.reload(&next)
+	}
+	w.markForceAuth()
+
+	w.providerHasLatest = hasProvider
+	w.providerLatestAt = providerAt
+	w.providerLatestID = providerID
+	w.oauthHasLatest = hasMapping
+	w.oauthLatestAt = mappingAt
+	w.oauthLatestID = mappingID
 }
 
 // ensureDBAccessProvider injects a DB access provider when none are configured.
@@ -446,7 +587,10 @@ func (w *dbWatcher) pollAuth(ctx context.Context, force bool) {
 		nextAuthByID[a.ID] = a
 	}
 
-	configAuths := synthesizeConfigAuths(w.cfg)
+	w.cfgMu.RLock()
+	cfgSnapshot := w.cfg
+	w.cfgMu.RUnlock()
+	configAuths := synthesizeConfigAuths(cfgSnapshot)
 	for _, auth := range configAuths {
 		if auth == nil || auth.ID == "" {
 			continue

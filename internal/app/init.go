@@ -239,6 +239,14 @@ func CreateAdminUser(dsn string, username, password, siteName string) error {
 	if errMigrate := db.Migrate(conn); errMigrate != nil {
 		return fmt.Errorf("migrate database: %w", errMigrate)
 	}
+	return CreateAdminUserWithConn(conn, username, password, siteName)
+}
+
+// CreateAdminUserWithConn creates the first admin user and seeds the site name.
+func CreateAdminUserWithConn(conn *gorm.DB, username, password, siteName string) error {
+	if conn == nil {
+		return fmt.Errorf("open database: nil connection")
+	}
 
 	hashedPassword, errHash := security.HashPassword(password)
 	if errHash != nil {
@@ -247,11 +255,12 @@ func CreateAdminUser(dsn string, username, password, siteName string) error {
 
 	now := time.Now().UTC()
 	admin := models.Admin{
-		Username:  username,
-		Password:  hashedPassword,
-		Active:    true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Username:     username,
+		Password:     hashedPassword,
+		Active:       true,
+		IsSuperAdmin: true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if errCreate := conn.Create(&admin).Error; errCreate != nil {

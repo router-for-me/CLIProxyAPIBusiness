@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
@@ -21,6 +22,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/http/api/front"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/modelregistry"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/quota"
+	internalsettings "github.com/router-for-me/CLIProxyAPIBusiness/internal/settings"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/store"
 	internalusage "github.com/router-for-me/CLIProxyAPIBusiness/internal/usage"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/watcher"
@@ -58,7 +60,7 @@ func Migrate(ctx context.Context, cfg config.AppConfig) error {
 }
 
 // RunServer boots the API relay server with database-backed components.
-func RunServer(ctx context.Context, cfg config.AppConfig) error {
+func RunServer(ctx context.Context, cfg config.AppConfig, defaultPort int) error {
 	configPath := config.ResolveConfigPath(cfg.ConfigPath)
 	dsn, err := config.LoadDatabaseDSN(configPath)
 	if err != nil {
@@ -75,6 +77,13 @@ func RunServer(ctx context.Context, cfg config.AppConfig) error {
 	if errMigrate := db.Migrate(conn); errMigrate != nil {
 		return errMigrate
 	}
+
+	initialized, errInit := HasAdminInitialized(conn)
+	if errInit != nil {
+		return errInit
+	}
+	var initState atomic.Bool
+	initState.Store(initialized)
 	modelStore := modelregistry.NewStore()
 	sdkcliproxy.SetGlobalModelRegistryHook(modelregistry.NewHook(conn, modelStore))
 
@@ -85,14 +94,20 @@ func RunServer(ctx context.Context, cfg config.AppConfig) error {
 	authStore := store.NewGormAuthStore(conn)
 	sdkAuth.RegisterTokenStore(authStore)
 
-	coreCfg, err := sdkconfig.LoadConfig(configPath)
+	coreCfg, err := loadCoreConfig(configPath)
 	if err != nil {
-		return fmt.Errorf("load cliproxy config: %w", err)
+		return err
 	}
 	coreCfg.CommercialMode = true
 	coreCfg.DisableCooling = true
 	coreCfg.RemoteManagement.DisableControlPanel = true
 	coreCfg.AuthDir, _ = os.Getwd()
+	if coreCfg.Port <= 0 {
+		if defaultPort <= 0 {
+			defaultPort = 8318
+		}
+		coreCfg.Port = defaultPort
+	}
 	if len(coreCfg.Access.Providers) == 0 {
 		coreCfg.Access.Providers = []sdkconfig.AccessProvider{
 			{
@@ -125,6 +140,19 @@ func RunServer(ctx context.Context, cfg config.AppConfig) error {
 		WithCoreAuthManager(coreManager).
 		WithServerOptions(
 			sdkapi.WithMiddleware(
+				func(c *gin.Context) {
+					if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+						return
+					}
+					if c.Request.URL.Path != "/" {
+						return
+					}
+					if initState.Load() {
+						return
+					}
+					c.Redirect(http.StatusTemporaryRedirect, "/init")
+					c.Abort()
+				},
 				webUIRootMiddleware(webBundle.IndexHTML),
 				relayhttp.CLIProxyAuthMiddleware(enforcementAccessMgr, coreCfg.WebsocketAuth),
 				relayhttp.CLIProxyModelsMiddleware(conn, modelStore),
@@ -133,6 +161,62 @@ func RunServer(ctx context.Context, cfg config.AppConfig) error {
 				internalhttp.RegisterAdminRoutes(engine, conn, jwtConfig, configPath, cfg, baseHandler)
 				front.RegisterFrontRoutes(engine, conn, jwtConfig, modelStore)
 				engine.StaticFS("/assets", webBundle.AssetsFS)
+				engine.GET("/v0/init/status", func(c *gin.Context) {
+					c.JSON(http.StatusOK, InitStatusResponse{Initialized: initState.Load()})
+				})
+				engine.GET("/v0/init/prefill", func(c *gin.Context) {
+					prefill, errPrefill := initPrefillFromDSN(dsn)
+					if errPrefill != nil {
+						c.JSON(http.StatusOK, gin.H{"locked": true})
+						return
+					}
+					c.JSON(http.StatusOK, struct {
+						Locked bool `json:"locked"`
+						initPrefill
+					}{Locked: true, initPrefill: prefill})
+				})
+				engine.POST("/v0/init/setup", func(c *gin.Context) {
+					if ok, errInit := HasAdminInitialized(conn); errInit != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "check admin status failed"})
+						return
+					} else if ok {
+						initState.Store(true)
+						c.JSON(http.StatusBadRequest, gin.H{"error": "System already initialized"})
+						return
+					}
+
+					var req InitRequest
+					if errBind := c.ShouldBindJSON(&req); errBind != nil {
+						c.JSON(http.StatusBadRequest, gin.H{"error": errBind.Error()})
+						return
+					}
+
+					req.SiteName = strings.TrimSpace(req.SiteName)
+					if req.SiteName == "" {
+						req.SiteName = internalsettings.DefaultSiteName
+					}
+
+					req.AdminUsername = strings.TrimSpace(req.AdminUsername)
+					if req.AdminUsername == "" {
+						c.JSON(http.StatusBadRequest, gin.H{"error": "Admin username is required"})
+						return
+					}
+					if strings.TrimSpace(req.AdminPassword) == "" {
+						c.JSON(http.StatusBadRequest, gin.H{"error": "Admin password is required"})
+						return
+					}
+					if len(req.AdminPassword) < 6 {
+						c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters"})
+						return
+					}
+
+					if errAdmin := CreateAdminUserWithConn(conn, req.AdminUsername, req.AdminPassword, req.SiteName); errAdmin != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create admin: %v", errAdmin)})
+						return
+					}
+					initState.Store(true)
+					c.JSON(http.StatusOK, gin.H{"message": "Initialization successful"})
+				})
 				engine.NoRoute(func(c *gin.Context) {
 					if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 						c.Status(http.StatusNotFound)
@@ -140,10 +224,6 @@ func RunServer(ctx context.Context, cfg config.AppConfig) error {
 					}
 					requestPath := c.Request.URL.Path
 					if isAPIRoute(requestPath) {
-						c.Status(http.StatusNotFound)
-						return
-					}
-					if requestPath == "/init" && ConfigExists(configPath) {
 						c.Status(http.StatusNotFound)
 						return
 					}
@@ -159,6 +239,18 @@ func RunServer(ctx context.Context, cfg config.AppConfig) error {
 							c.Status(http.StatusNotFound)
 							return
 						}
+					}
+					if requestPath == "/init" {
+						if initState.Load() {
+							c.Status(http.StatusNotFound)
+							return
+						}
+						c.Data(http.StatusOK, "text/html; charset=utf-8", webBundle.IndexHTML)
+						return
+					}
+					if !initState.Load() {
+						c.Redirect(http.StatusTemporaryRedirect, "/init")
+						return
 					}
 					c.Data(http.StatusOK, "text/html; charset=utf-8", webBundle.IndexHTML)
 				})
@@ -178,6 +270,21 @@ func RunServer(ctx context.Context, cfg config.AppConfig) error {
 
 	log.Infof("starting relay with config=%s", cfg.ConfigPath)
 	return service.Run(ctx)
+}
+
+func loadCoreConfig(configPath string) (*sdkconfig.Config, error) {
+	if ConfigExists(configPath) {
+		cfg, errLoad := sdkconfig.LoadConfig(configPath)
+		if errLoad != nil {
+			return nil, fmt.Errorf("load cliproxy config: %w", errLoad)
+		}
+		return cfg, nil
+	}
+	cfg, errLoad := sdkconfig.LoadConfigOptional(configPath, true)
+	if errLoad != nil {
+		return nil, fmt.Errorf("load cliproxy config: %w", errLoad)
+	}
+	return cfg, nil
 }
 
 // nowUTC returns the current UTC time.

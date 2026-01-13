@@ -45,17 +45,17 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	configPath := config.ResolveConfigPath(appCfg.ConfigPath)
-	if !app.ConfigExists(configPath) {
+	if !app.ConfigExists(configPath) && strings.TrimSpace(os.Getenv(config.EnvDBConnection)) == "" {
 		log.Info("config.yaml not found, starting init server...")
 		errInit := app.RunInitServer(ctx, appCfg, *port)
 		if errors.Is(errInit, app.ErrInitCompleted) {
 			log.Info("initialization completed, starting main server...")
-			return app.RunServer(ctx, appCfg)
+			return app.RunServer(ctx, appCfg, *port)
 		}
 		return errInit
 	}
 
-	return app.RunServer(ctx, appCfg)
+	return app.RunServer(ctx, appCfg, *port)
 }
 
 func validatePort(port int) error {

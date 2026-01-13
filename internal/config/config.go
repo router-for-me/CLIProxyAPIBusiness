@@ -11,6 +11,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	EnvConfigPath   = "CONFIG_PATH"
+	EnvDBConnection = "DB_CONNECTION"
+	EnvJWTSecret    = "JWT_SECRET"
+	EnvJWTExpiry    = "JWT_EXPIRY"
+)
+
 // AppConfig holds resolved application configuration values.
 type AppConfig struct {
 	ConfigPath string
@@ -18,7 +25,7 @@ type AppConfig struct {
 
 // LoadFromEnv loads app config from environment variables.
 func LoadFromEnv() (AppConfig, error) {
-	return AppConfig{ConfigPath: ResolveConfigPath(os.Getenv("CONFIG_PATH"))}, nil
+	return AppConfig{ConfigPath: ResolveConfigPath(os.Getenv(EnvConfigPath))}, nil
 }
 
 // ResolveConfigPath normalizes the config path and applies defaults.
@@ -44,6 +51,10 @@ type JWTConfig struct {
 
 // LoadDatabaseDSN reads the database DSN from the YAML config file.
 func LoadDatabaseDSN(configPath string) (string, error) {
+	if dsn := strings.TrimSpace(os.Getenv(EnvDBConnection)); dsn != "" {
+		return dsn, nil
+	}
+
 	// fileConfig maps the YAML fields needed for DSN resolution.
 	type fileConfig struct {
 		DatabaseDSN string `yaml:"database-dsn"`
@@ -81,17 +92,25 @@ func LoadJWTConfig(configPath string) (JWTConfig, error) {
 		JWT JWTConfig `yaml:"jwt"`
 	}
 
+	result := JWTConfig{Expiry: defaultJWTExpiry}
+
 	data, errRead := os.ReadFile(configPath)
-	if errRead != nil {
-		return JWTConfig{Expiry: defaultJWTExpiry}, nil
+	if errRead == nil {
+		var cfg fileConfig
+		if errUnmarshal := yaml.Unmarshal(data, &cfg); errUnmarshal == nil {
+			result = cfg.JWT
+		}
 	}
 
-	var cfg fileConfig
-	if errUnmarshal := yaml.Unmarshal(data, &cfg); errUnmarshal != nil {
-		return JWTConfig{Expiry: defaultJWTExpiry}, nil
+	if secret := strings.TrimSpace(os.Getenv(EnvJWTSecret)); secret != "" {
+		result.Secret = secret
+	}
+	if expiryRaw := strings.TrimSpace(os.Getenv(EnvJWTExpiry)); expiryRaw != "" {
+		if expiry, errParse := time.ParseDuration(expiryRaw); errParse == nil && expiry > 0 {
+			result.Expiry = expiry
+		}
 	}
 
-	result := cfg.JWT
 	if result.Expiry <= 0 {
 		result.Expiry = defaultJWTExpiry
 	}
