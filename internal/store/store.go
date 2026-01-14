@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -132,6 +133,9 @@ func (s *GormAuthStore) List(ctx context.Context) ([]*cliproxyauth.Auth, error) 
 		attr := map[string]string{}
 		if email, ok := metadata["email"].(string); ok && strings.TrimSpace(email) != "" {
 			attr["email"] = strings.TrimSpace(email)
+		}
+		if row.Priority != 0 {
+			attr["priority"] = strconv.Itoa(row.Priority)
 		}
 		auths = append(auths, &cliproxyauth.Auth{
 			ID:               row.Key,

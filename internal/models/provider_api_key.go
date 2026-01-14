@@ -11,6 +11,7 @@ type ProviderAPIKey struct {
 	ID uint64 `gorm:"primaryKey;autoIncrement"` // Primary key.
 
 	Provider string `gorm:"type:varchar(64);not null;index"` // Provider name.
+	Priority int    `gorm:"not null;default:0;index"`        // Selection priority (higher wins).
 	Name     string `gorm:"type:text"`                       // Display name.
 	APIKey   string `gorm:"type:text"`                       // Provider API key.
 	Prefix   string `gorm:"type:text"`                       // Key prefix to apply.

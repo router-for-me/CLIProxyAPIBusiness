@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,6 +83,9 @@ func synthesizeGeminiKeys(cfg *sdkconfig.Config, now time.Time, idGen *stableIDG
 			"api_key":   key,
 			"auth_kind": "apikey",
 		}
+		if entry.Priority != 0 {
+			attrs["priority"] = strconv.Itoa(entry.Priority)
+		}
 		if base != "" {
 			attrs["base_url"] = base
 		}
@@ -123,6 +127,9 @@ func synthesizeClaudeKeys(cfg *sdkconfig.Config, now time.Time, idGen *stableIDG
 			"api_key":   key,
 			"auth_kind": "apikey",
 		}
+		if entry.Priority != 0 {
+			attrs["priority"] = strconv.Itoa(entry.Priority)
+		}
 		if base != "" {
 			attrs["base_url"] = base
 		}
@@ -163,6 +170,9 @@ func synthesizeCodexKeys(cfg *sdkconfig.Config, now time.Time, idGen *stableIDGe
 			"source":    fmt.Sprintf("config:codex[%s]", token),
 			"api_key":   key,
 			"auth_kind": "apikey",
+		}
+		if entry.Priority != 0 {
+			attrs["priority"] = strconv.Itoa(entry.Priority)
 		}
 		if base != "" {
 			attrs["base_url"] = base
@@ -213,6 +223,9 @@ func synthesizeOpenAICompat(cfg *sdkconfig.Config, now time.Time, idGen *stableI
 				"provider_key": providerName,
 				"auth_kind":    "apikey",
 			}
+			if compat.Priority != 0 {
+				attrs["priority"] = strconv.Itoa(compat.Priority)
+			}
 			if key != "" {
 				attrs["api_key"] = key
 			}
@@ -243,6 +256,9 @@ func synthesizeOpenAICompat(cfg *sdkconfig.Config, now time.Time, idGen *stableI
 				"compat_name":  compat.Name,
 				"provider_key": providerName,
 				"auth_kind":    "apikey",
+			}
+			if compat.Priority != 0 {
+				attrs["priority"] = strconv.Itoa(compat.Priority)
 			}
 			if hash := hashOpenAICompatModels(compat.Models); hash != "" {
 				attrs["models_hash"] = hash
@@ -281,6 +297,9 @@ func synthesizeVertexCompat(cfg *sdkconfig.Config, now time.Time, idGen *stableI
 			"base_url":     base,
 			"provider_key": providerName,
 			"auth_kind":    "apikey",
+		}
+		if entry.Priority != 0 {
+			attrs["priority"] = strconv.Itoa(entry.Priority)
 		}
 		if key != "" {
 			attrs["api_key"] = key

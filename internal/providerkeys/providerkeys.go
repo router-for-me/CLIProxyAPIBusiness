@@ -48,6 +48,7 @@ func ApplyToConfig(cfg *sdkconfig.Config, providerRows []models.ProviderAPIKey, 
 		case providerGemini:
 			entry := sdkconfig.GeminiKey{
 				APIKey:   strings.TrimSpace(row.APIKey),
+				Priority: row.Priority,
 				Prefix:   strings.TrimSpace(row.Prefix),
 				BaseURL:  strings.TrimSpace(row.BaseURL),
 				ProxyURL: strings.TrimSpace(row.ProxyURL),
@@ -61,6 +62,7 @@ func ApplyToConfig(cfg *sdkconfig.Config, providerRows []models.ProviderAPIKey, 
 		case providerCodex:
 			entry := sdkconfig.CodexKey{
 				APIKey:   strings.TrimSpace(row.APIKey),
+				Priority: row.Priority,
 				Prefix:   strings.TrimSpace(row.Prefix),
 				BaseURL:  strings.TrimSpace(row.BaseURL),
 				ProxyURL: strings.TrimSpace(row.ProxyURL),
@@ -74,6 +76,7 @@ func ApplyToConfig(cfg *sdkconfig.Config, providerRows []models.ProviderAPIKey, 
 		case providerClaude:
 			entry := sdkconfig.ClaudeKey{
 				APIKey:   strings.TrimSpace(row.APIKey),
+				Priority: row.Priority,
 				Prefix:   strings.TrimSpace(row.Prefix),
 				BaseURL:  strings.TrimSpace(row.BaseURL),
 				ProxyURL: strings.TrimSpace(row.ProxyURL),
@@ -87,6 +90,7 @@ func ApplyToConfig(cfg *sdkconfig.Config, providerRows []models.ProviderAPIKey, 
 		case providerOpenAI:
 			entry := sdkconfig.OpenAICompatibility{
 				Name:          strings.TrimSpace(row.Name),
+				Priority:      row.Priority,
 				Prefix:        strings.TrimSpace(row.Prefix),
 				BaseURL:       strings.TrimSpace(row.BaseURL),
 				APIKeyEntries: toOpenAIKeyEntries(decodeAPIKeyEntries(row.APIKeyEntries)),

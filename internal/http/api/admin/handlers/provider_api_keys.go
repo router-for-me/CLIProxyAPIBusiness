@@ -73,6 +73,7 @@ type apiKeyEntry struct {
 type createProviderAPIKeyRequest struct {
 	Provider       string            `json:"provider"`        // Provider identifier.
 	Name           *string           `json:"name"`            // Optional provider name.
+	Priority       int               `json:"priority"`        // Selection priority (higher wins).
 	APIKey         *string           `json:"api_key"`         // Optional API key.
 	Prefix         *string           `json:"prefix"`          // Optional prefix.
 	BaseURL        *string           `json:"base_url"`        // Optional base URL.
@@ -87,6 +88,7 @@ type createProviderAPIKeyRequest struct {
 type updateProviderAPIKeyRequest struct {
 	Provider       *string            `json:"provider"`        // Optional provider.
 	Name           *string            `json:"name"`            // Optional provider name.
+	Priority       *int               `json:"priority"`        // Optional selection priority.
 	APIKey         *string            `json:"api_key"`         // Optional API key.
 	Prefix         *string            `json:"prefix"`          // Optional prefix.
 	BaseURL        *string            `json:"base_url"`        // Optional base URL.
@@ -126,6 +128,7 @@ func (h *ProviderAPIKeyHandler) Create(c *gin.Context) {
 	now := time.Now().UTC()
 	row := models.ProviderAPIKey{
 		Provider:  provider,
+		Priority:  body.Priority,
 		Name:      strings.TrimSpace(derefString(body.Name)),
 		APIKey:    strings.TrimSpace(derefString(body.APIKey)),
 		Prefix:    strings.TrimSpace(derefString(body.Prefix)),
@@ -323,6 +326,9 @@ func (h *ProviderAPIKeyHandler) Update(c *gin.Context) {
 	if body.Name != nil {
 		row.Name = strings.TrimSpace(*body.Name)
 	}
+	if body.Priority != nil {
+		row.Priority = *body.Priority
+	}
 	if body.APIKey != nil {
 		row.APIKey = strings.TrimSpace(*body.APIKey)
 	}
@@ -455,6 +461,7 @@ func (h *ProviderAPIKeyHandler) syncSDKConfig(ctx context.Context) error {
 		case providerGemini:
 			entry := sdkconfig.GeminiKey{
 				APIKey:   strings.TrimSpace(row.APIKey),
+				Priority: row.Priority,
 				Prefix:   strings.TrimSpace(row.Prefix),
 				BaseURL:  strings.TrimSpace(row.BaseURL),
 				ProxyURL: strings.TrimSpace(row.ProxyURL),
@@ -468,6 +475,7 @@ func (h *ProviderAPIKeyHandler) syncSDKConfig(ctx context.Context) error {
 		case providerCodex:
 			entry := sdkconfig.CodexKey{
 				APIKey:   strings.TrimSpace(row.APIKey),
+				Priority: row.Priority,
 				Prefix:   strings.TrimSpace(row.Prefix),
 				BaseURL:  strings.TrimSpace(row.BaseURL),
 				ProxyURL: strings.TrimSpace(row.ProxyURL),
@@ -481,6 +489,7 @@ func (h *ProviderAPIKeyHandler) syncSDKConfig(ctx context.Context) error {
 		case providerClaude:
 			entry := sdkconfig.ClaudeKey{
 				APIKey:   strings.TrimSpace(row.APIKey),
+				Priority: row.Priority,
 				Prefix:   strings.TrimSpace(row.Prefix),
 				BaseURL:  strings.TrimSpace(row.BaseURL),
 				ProxyURL: strings.TrimSpace(row.ProxyURL),
@@ -494,6 +503,7 @@ func (h *ProviderAPIKeyHandler) syncSDKConfig(ctx context.Context) error {
 		case providerOpenAI:
 			entry := sdkconfig.OpenAICompatibility{
 				Name:          strings.TrimSpace(row.Name),
+				Priority:      row.Priority,
 				Prefix:        strings.TrimSpace(row.Prefix),
 				BaseURL:       strings.TrimSpace(row.BaseURL),
 				APIKeyEntries: toOpenAIKeyEntries(decodeAPIKeyEntries(row.APIKeyEntries)),
@@ -725,6 +735,7 @@ func formatProviderRow(row *models.ProviderAPIKey) gin.H {
 		"id":              row.ID,
 		"provider":        row.Provider,
 		"name":            row.Name,
+		"priority":        row.Priority,
 		"api_key":         row.APIKey,
 		"prefix":          row.Prefix,
 		"base_url":        row.BaseURL,

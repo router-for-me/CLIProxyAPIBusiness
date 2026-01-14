@@ -38,6 +38,7 @@ type createAuthFileRequest struct {
 	Content     map[string]any      `json:"content"`
 	IsAvailable *bool               `json:"is_available"`
 	RateLimit   int                 `json:"rate_limit"`
+	Priority    int                 `json:"priority"`
 }
 
 type importAuthFilesFailure struct {
@@ -112,6 +113,7 @@ func (h *AuthFileHandler) Create(c *gin.Context) {
 		Content:     contentJSON,
 		IsAvailable: isAvailable,
 		RateLimit:   body.RateLimit,
+		Priority:    body.Priority,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -133,6 +135,7 @@ func (h *AuthFileHandler) Create(c *gin.Context) {
 		"content":       auth.Content,
 		"is_available":  auth.IsAvailable,
 		"rate_limit":    auth.RateLimit,
+		"priority":      auth.Priority,
 		"created_at":    auth.CreatedAt,
 		"updated_at":    auth.UpdatedAt,
 	})
@@ -362,6 +365,7 @@ func (h *AuthFileHandler) List(c *gin.Context) {
 			"content":       row.Content,
 			"is_available":  row.IsAvailable,
 			"rate_limit":    row.RateLimit,
+			"priority":      row.Priority,
 			"created_at":    row.CreatedAt,
 			"updated_at":    row.UpdatedAt,
 		}
@@ -403,6 +407,7 @@ func (h *AuthFileHandler) Get(c *gin.Context) {
 		"content":       auth.Content,
 		"is_available":  auth.IsAvailable,
 		"rate_limit":    auth.RateLimit,
+		"priority":      auth.Priority,
 		"created_at":    auth.CreatedAt,
 		"updated_at":    auth.UpdatedAt,
 	}
@@ -418,6 +423,7 @@ type updateAuthFileRequest struct {
 	Content     map[string]any       `json:"content"`
 	IsAvailable *bool                `json:"is_available"`
 	RateLimit   *int                 `json:"rate_limit"`
+	Priority    *int                 `json:"priority"`
 }
 
 // Update modifies an auth file entry.
@@ -457,6 +463,9 @@ func (h *AuthFileHandler) Update(c *gin.Context) {
 	}
 	if body.RateLimit != nil {
 		updates["rate_limit"] = *body.RateLimit
+	}
+	if body.Priority != nil {
+		updates["priority"] = *body.Priority
 	}
 
 	res := h.db.WithContext(c.Request.Context()).Model(&models.Auth{}).Where("id = ?", id).Updates(updates)
