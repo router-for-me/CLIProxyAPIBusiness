@@ -9,8 +9,9 @@ import (
 )
 
 type selectorEntry struct {
-	id       uint64
-	selector int
+	id        uint64
+	selector  int
+	rateLimit int
 }
 
 type modelAliasEntry struct {
@@ -52,13 +53,13 @@ func StoreModelMappings(updatedAt time.Time, rows []models.ModelMapping) {
 		if alias := strings.TrimSpace(row.NewModelName); alias != "" {
 			key := makeKey(provider, alias)
 			if prev, ok := nextNew[key]; !ok || row.ID > prev.id {
-				nextNew[key] = selectorEntry{id: row.ID, selector: row.Selector}
+				nextNew[key] = selectorEntry{id: row.ID, selector: row.Selector, rateLimit: row.RateLimit}
 			}
 		}
 		if name := strings.TrimSpace(row.ModelName); name != "" {
 			key := makeKey(provider, name)
 			if prev, ok := nextModel[key]; !ok || row.ID > prev.id {
-				nextModel[key] = selectorEntry{id: row.ID, selector: row.Selector}
+				nextModel[key] = selectorEntry{id: row.ID, selector: row.Selector, rateLimit: row.RateLimit}
 			}
 		}
 
@@ -93,6 +94,23 @@ func LookupSelector(provider, model string) (uint64, int, bool) {
 	}
 	if entry, ok := snap.byProviderModel[makeKey(provider, model)]; ok {
 		return entry.id, entry.selector, true
+	}
+	return 0, 0, false
+}
+
+// LookupRateLimit returns the rate limit for provider + model using mapped name first.
+func LookupRateLimit(provider, model string) (uint64, int, bool) {
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	if provider == "" || model == "" {
+		return 0, 0, false
+	}
+	snap := loadSnapshot()
+	if entry, ok := snap.byProviderNew[makeKey(provider, model)]; ok {
+		return entry.id, entry.rateLimit, true
+	}
+	if entry, ok := snap.byProviderModel[makeKey(provider, model)]; ok {
+		return entry.id, entry.rateLimit, true
 	}
 	return 0, 0, false
 }

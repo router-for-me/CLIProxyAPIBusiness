@@ -831,7 +831,7 @@ func (w *dbWatcher) pollPayloadRules(ctx context.Context, force bool) {
 	var mappingRows []models.ModelMapping
 	errFindMappings := w.db.WithContext(qctx).
 		Model(&models.ModelMapping{}).
-		Select("id", "provider", "model_name", "new_model_name", "selector", "fork", "is_enabled").
+		Select("id", "provider", "model_name", "new_model_name", "selector", "rate_limit", "fork", "is_enabled").
 		Find(&mappingRows).Error
 	if errFindMappings != nil {
 		if errors.Is(errFindMappings, context.Canceled) {

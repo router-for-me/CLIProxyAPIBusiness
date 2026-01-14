@@ -20,6 +20,8 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/modelmapping"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/models"
+	"github.com/router-for-me/CLIProxyAPIBusiness/internal/ratelimit"
+	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -35,11 +37,18 @@ type Selector struct {
 	db *gorm.DB
 
 	roundRobinCursor atomic.Uint64
+
+	rateLimiter      *ratelimit.Manager
+	resolveRateLimit func(ctx context.Context, db *gorm.DB, userID uint64, provider, model, authKey string) (ratelimit.Decision, error)
 }
 
 // NewSelector constructs a selector backed by the application database.
 func NewSelector(db *gorm.DB) *Selector {
-	return &Selector{db: db}
+	return &Selector{
+		db:               db,
+		rateLimiter:      ratelimit.NewManager(ratelimit.LoadSettingsConfig, time.Now, nil),
+		resolveRateLimit: ratelimit.ResolveLimit,
+	}
 }
 
 // Pick implements coreauth.Selector.
@@ -56,14 +65,63 @@ func (s *Selector) Pick(ctx context.Context, provider, model string, opts clipro
 	}
 
 	mappingID, selector := s.loadModelMappingSelector(ctx, provider, model)
+	var selected *coreauth.Auth
+	var errPick error
 	switch selector {
 	case modelMappingSelectorFillFirst:
-		return s.pickFillFirst(ctx, available), nil
+		selected = s.pickFillFirst(ctx, available)
 	case modelMappingSelectorStick:
-		return s.pickStick(ctx, provider, model, mappingID, available)
+		selected, errPick = s.pickStick(ctx, provider, model, mappingID, available)
 	default:
-		return s.pickRoundRobin(available), nil
+		selected = s.pickRoundRobin(available)
 	}
+	if errPick != nil {
+		return nil, errPick
+	}
+	if errLimit := s.applyRateLimit(ctx, provider, model, selected); errLimit != nil {
+		return nil, errLimit
+	}
+	return selected, nil
+}
+
+func (s *Selector) applyRateLimit(ctx context.Context, provider, model string, selected *coreauth.Auth) error {
+	if s == nil || s.db == nil || s.rateLimiter == nil || s.resolveRateLimit == nil {
+		return nil
+	}
+	if !shouldApplyRateLimit(ctx) {
+		return nil
+	}
+	userID, okUser := userIDFromContext(ctx)
+	if !okUser {
+		return nil
+	}
+
+	authKey := ""
+	if selected != nil {
+		authKey = strings.TrimSpace(selected.ID)
+	}
+	decision, errResolve := s.resolveRateLimit(ctx, s.db, userID, provider, model, authKey)
+	if errResolve != nil {
+		log.WithError(errResolve).Warn("rate limit: resolve failed")
+		return nil
+	}
+	if decision.Limit <= 0 {
+		return nil
+	}
+	key := ratelimit.KeyForDecision(userID, decision)
+	if key == "" {
+		return nil
+	}
+	result, errAllow := s.rateLimiter.Allow(ctx, key, decision.Limit)
+	if errAllow != nil {
+		log.WithError(errAllow).Warn("rate limit: check failed")
+		return nil
+	}
+	if !result.Allowed {
+		resetIn := result.Reset.Sub(time.Now())
+		return newRateLimitError(resetIn)
+	}
+	return nil
 }
 
 func (s *Selector) pickRoundRobin(available []*coreauth.Auth) *coreauth.Auth {
@@ -316,6 +374,24 @@ func normalizeModelMappingSelector(value int) int {
 	}
 }
 
+func shouldApplyRateLimit(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	ginCtx, ok := ctx.Value("gin").(*gin.Context)
+	if !ok || ginCtx == nil || ginCtx.Request == nil || ginCtx.Request.URL == nil {
+		return false
+	}
+	path := strings.TrimSpace(ginCtx.Request.URL.Path)
+	if path == "" {
+		return false
+	}
+	if strings.HasPrefix(path, "/v1/models") {
+		return false
+	}
+	return strings.HasPrefix(path, "/v1") || strings.HasPrefix(path, "/v1beta") || strings.HasPrefix(path, "/api")
+}
+
 func userIDFromContext(ctx context.Context) (uint64, bool) {
 	if ctx == nil {
 		return 0, false
@@ -439,6 +515,36 @@ func (e *modelCooldownError) StatusCode() int {
 }
 
 func (e *modelCooldownError) Headers() http.Header {
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/json")
+	resetSeconds := int(math.Ceil(e.resetIn.Seconds()))
+	if resetSeconds < 0 {
+		resetSeconds = 0
+	}
+	headers.Set("Retry-After", strconv.Itoa(resetSeconds))
+	return headers
+}
+
+type rateLimitError struct {
+	resetIn time.Duration
+}
+
+func newRateLimitError(resetIn time.Duration) *rateLimitError {
+	if resetIn < 0 {
+		resetIn = 0
+	}
+	return &rateLimitError{resetIn: resetIn}
+}
+
+func (e *rateLimitError) Error() string {
+	return `{"error":"rate limit exceeded"}`
+}
+
+func (e *rateLimitError) StatusCode() int {
+	return http.StatusTooManyRequests
+}
+
+func (e *rateLimitError) Headers() http.Header {
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
 	resetSeconds := int(math.Ceil(e.resetIn.Seconds()))

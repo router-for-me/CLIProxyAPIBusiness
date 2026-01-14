@@ -44,6 +44,7 @@ func (h *PlanFrontHandler) List(c *gin.Context) {
 			"sort_order":     plan.SortOrder,
 			"total_quota":    plan.TotalQuota,
 			"daily_quota":    plan.DailyQuota,
+			"rate_limit":     plan.RateLimit,
 			"is_enabled":     plan.IsEnabled,
 			"created_at":     plan.CreatedAt,
 			"updated_at":     plan.UpdatedAt,

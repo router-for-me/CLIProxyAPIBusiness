@@ -13,7 +13,8 @@ type ModelMapping struct {
 
 	// Selector indicates the auth routing strategy:
 	// 0 = RoundRobin, 1 = FillFirst, 2 = Stick.
-	Selector int `gorm:"not null;default:0"` // Routing selector.
+	Selector  int `gorm:"not null;default:0"` // Routing selector.
+	RateLimit int `gorm:"not null;default:0"` // Rate limit per second.
 
 	IsEnabled bool `gorm:"not null;default:true"` // Whether mapping is active.
 

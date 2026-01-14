@@ -168,6 +168,7 @@ type Auth struct {
 	Content datatypes.JSON `gorm:"type:jsonb;not null"` // Auth payload content.
 
 	IsAvailable bool `gorm:"type:boolean;not null;default:true"` // Availability flag.
+	RateLimit   int  `gorm:"not null;default:0"`                 // Rate limit per second.
 
 	CreatedAt time.Time `gorm:"not null;autoCreateTime"` // Creation timestamp.
 	UpdatedAt time.Time `gorm:"not null;autoUpdateTime"` // Last update timestamp.

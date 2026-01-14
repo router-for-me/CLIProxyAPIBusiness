@@ -35,6 +35,7 @@ type createBillRequest struct {
 	UsedQuota   float64 `json:"used_quota"`   // Used quota.
 	LeftQuota   float64 `json:"left_quota"`   // Remaining quota.
 	UsedCount   int     `json:"used_count"`   // Usage count.
+	RateLimit   *int    `json:"rate_limit"`   // Optional rate limit per second.
 	IsEnabled   *bool   `json:"is_enabled"`   // Optional active flag.
 	Status      int     `json:"status"`       // Bill status.
 }
@@ -79,9 +80,23 @@ func (h *BillHandler) Create(c *gin.Context) {
 		return
 	}
 
+	var plan models.Plan
+	if errFindPlan := h.db.WithContext(c.Request.Context()).First(&plan, body.PlanID).Error; errFindPlan != nil {
+		if errors.Is(errFindPlan, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plan not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query plan failed"})
+		return
+	}
+
 	isEnabled := true
 	if body.IsEnabled != nil {
 		isEnabled = *body.IsEnabled
+	}
+	rateLimit := plan.RateLimit
+	if body.RateLimit != nil {
+		rateLimit = *body.RateLimit
 	}
 
 	now := time.Now().UTC()
@@ -97,6 +112,7 @@ func (h *BillHandler) Create(c *gin.Context) {
 		UsedQuota:   body.UsedQuota,
 		LeftQuota:   body.LeftQuota,
 		UsedCount:   body.UsedCount,
+		RateLimit:   rateLimit,
 		IsEnabled:   isEnabled,
 		Status:      status,
 		CreatedAt:   now,
@@ -187,6 +203,7 @@ type updateBillRequest struct {
 	UsedQuota   *float64 `json:"used_quota"`   // Optional used quota.
 	LeftQuota   *float64 `json:"left_quota"`   // Optional remaining quota.
 	UsedCount   *int     `json:"used_count"`   // Optional usage count.
+	RateLimit   *int     `json:"rate_limit"`   // Optional rate limit per second.
 	IsEnabled   *bool    `json:"is_enabled"`   // Optional active flag.
 	Status      *int     `json:"status"`       // Optional bill status.
 }
@@ -274,6 +291,9 @@ func (h *BillHandler) Update(c *gin.Context) {
 	if body.UsedCount != nil {
 		updates["used_count"] = *body.UsedCount
 	}
+	if body.RateLimit != nil {
+		updates["rate_limit"] = *body.RateLimit
+	}
 	if body.IsEnabled != nil {
 		updates["is_enabled"] = *body.IsEnabled
 	}
@@ -360,6 +380,7 @@ func (h *BillHandler) formatBill(bill *models.Bill) gin.H {
 		"used_quota":   bill.UsedQuota,
 		"left_quota":   bill.LeftQuota,
 		"used_count":   bill.UsedCount,
+		"rate_limit":   bill.RateLimit,
 		"is_enabled":   bill.IsEnabled,
 		"status":       bill.Status,
 		"created_at":   bill.CreatedAt,

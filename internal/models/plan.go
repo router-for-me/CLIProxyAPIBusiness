@@ -24,6 +24,7 @@ type Plan struct {
 
 	TotalQuota float64 `gorm:"type:decimal(20,10);not null;default:0"` // Total quota allocation.
 	DailyQuota float64 `gorm:"type:decimal(20,10);not null;default:0"` // Daily quota allocation.
+	RateLimit  int     `gorm:"not null;default:0"`                     // Rate limit per second.
 
 	IsEnabled bool `gorm:"not null;default:true"` // Whether the plan is active.
 

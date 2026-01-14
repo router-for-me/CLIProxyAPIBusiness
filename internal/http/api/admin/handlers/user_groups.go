@@ -27,6 +27,7 @@ func NewUserGroupHandler(db *gorm.DB) *UserGroupHandler {
 type createUserGroupRequest struct {
 	Name      string `json:"name"`
 	IsDefault bool   `json:"is_default"`
+	RateLimit int    `json:"rate_limit"`
 }
 
 // Create creates a new user group.
@@ -46,6 +47,7 @@ func (h *UserGroupHandler) Create(c *gin.Context) {
 	group := models.UserGroup{
 		Name:      name,
 		IsDefault: body.IsDefault,
+		RateLimit: body.RateLimit,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -101,6 +103,7 @@ func (h *UserGroupHandler) List(c *gin.Context) {
 			"id":         row.ID,
 			"name":       row.Name,
 			"is_default": row.IsDefault,
+			"rate_limit": row.RateLimit,
 			"created_at": row.CreatedAt,
 			"updated_at": row.UpdatedAt,
 		})
@@ -128,6 +131,7 @@ func (h *UserGroupHandler) Get(c *gin.Context) {
 		"id":         group.ID,
 		"name":       group.Name,
 		"is_default": group.IsDefault,
+		"rate_limit": group.RateLimit,
 		"created_at": group.CreatedAt,
 		"updated_at": group.UpdatedAt,
 	})
@@ -137,6 +141,7 @@ func (h *UserGroupHandler) Get(c *gin.Context) {
 type updateUserGroupRequest struct {
 	Name      *string `json:"name"`
 	IsDefault *bool   `json:"is_default"`
+	RateLimit *int    `json:"rate_limit"`
 }
 
 // Update modifies a user group.
@@ -167,6 +172,9 @@ func (h *UserGroupHandler) Update(c *gin.Context) {
 		}
 		if body.IsDefault != nil {
 			updates["is_default"] = *body.IsDefault
+		}
+		if body.RateLimit != nil {
+			updates["rate_limit"] = *body.RateLimit
 		}
 
 		res := tx.Model(&models.UserGroup{}).Where("id = ?", id).Updates(updates)

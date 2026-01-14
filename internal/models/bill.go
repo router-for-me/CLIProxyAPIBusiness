@@ -49,6 +49,7 @@ type Bill struct {
 	DailyQuota float64 `gorm:"type:decimal(20,10);not null;default:0"` // Daily quota limit.
 	UsedQuota  float64 `gorm:"type:decimal(20,10);not null;default:0"` // Consumed quota amount.
 	LeftQuota  float64 `gorm:"type:decimal(20,10);not null;default:0"` // Remaining quota amount.
+	RateLimit  int     `gorm:"not null;default:0"`                     // Rate limit per second.
 
 	UsedCount int `gorm:"not null;default:0"` // Usage count within the period.
 

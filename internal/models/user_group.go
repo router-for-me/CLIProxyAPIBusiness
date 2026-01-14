@@ -8,6 +8,7 @@ type UserGroup struct {
 
 	Name      string `gorm:"type:text;not null;uniqueIndex"` // Display name.
 	IsDefault bool   `gorm:"not null;default:false"`         // Marks the default group.
+	RateLimit int    `gorm:"not null;default:0"`             // Rate limit per second.
 
 	Users []User `gorm:"foreignKey:UserGroupID"` // Related users.
 

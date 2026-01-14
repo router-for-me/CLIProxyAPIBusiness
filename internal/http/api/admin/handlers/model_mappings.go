@@ -31,6 +31,7 @@ type createModelMappingRequest struct {
 	IsEnabled    *bool  `json:"is_enabled"`     // Optional active flag.
 	Fork         *bool  `json:"fork"`           // Optional fork flag.
 	Selector     *int   `json:"selector"`       // Optional routing selector.
+	RateLimit    *int   `json:"rate_limit"`     // Optional rate limit per second.
 }
 
 // Create validates input and inserts a new model mapping.
@@ -70,6 +71,10 @@ func (h *ModelMappingHandler) Create(c *gin.Context) {
 			return
 		}
 	}
+	rateLimit := 0
+	if body.RateLimit != nil {
+		rateLimit = *body.RateLimit
+	}
 
 	now := time.Now().UTC()
 	mapping := models.ModelMapping{
@@ -78,6 +83,7 @@ func (h *ModelMappingHandler) Create(c *gin.Context) {
 		NewModelName: strings.TrimSpace(body.NewModelName),
 		Fork:         fork,
 		Selector:     selector,
+		RateLimit:    rateLimit,
 		IsEnabled:    isEnabled,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -152,6 +158,7 @@ type updateModelMappingRequest struct {
 	IsEnabled    *bool   `json:"is_enabled"`     // Optional active flag.
 	Fork         *bool   `json:"fork"`           // Optional fork flag.
 	Selector     *int    `json:"selector"`       // Optional routing selector.
+	RateLimit    *int    `json:"rate_limit"`     // Optional rate limit per second.
 }
 
 // Update validates and applies model mapping field updates.
@@ -218,6 +225,9 @@ func (h *ModelMappingHandler) Update(c *gin.Context) {
 			return
 		}
 		updates["selector"] = selector
+	}
+	if body.RateLimit != nil {
+		updates["rate_limit"] = *body.RateLimit
 	}
 
 	res := h.db.WithContext(c.Request.Context()).Model(&models.ModelMapping{}).Where("id = ?", id).Updates(updates)
@@ -288,6 +298,7 @@ func (h *ModelMappingHandler) formatMapping(m *models.ModelMapping) gin.H {
 		"new_model_name": m.NewModelName,
 		"fork":           m.Fork,
 		"selector":       m.Selector,
+		"rate_limit":     m.RateLimit,
 		"is_enabled":     m.IsEnabled,
 		"created_at":     m.CreatedAt,
 		"updated_at":     m.UpdatedAt,

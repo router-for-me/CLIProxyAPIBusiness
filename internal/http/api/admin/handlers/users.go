@@ -26,9 +26,10 @@ func NewUserHandler(db *gorm.DB) *UserHandler {
 
 // createUserRequest defines the request body for user creation.
 type createUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	RateLimit int    `json:"rate_limit"`
 }
 
 // Create creates a new user account.
@@ -60,6 +61,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Username:  username,
 		Email:     strings.TrimSpace(body.Email),
 		Password:  hash,
+		RateLimit: body.RateLimit,
 		Active:    true,
 		Disabled:  false,
 		CreatedAt: now,
@@ -70,9 +72,10 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
-		"id":       user.ID,
-		"username": user.Username,
-		"email":    user.Email,
+		"id":         user.ID,
+		"username":   user.Username,
+		"email":      user.Email,
+		"rate_limit": user.RateLimit,
 	})
 }
 
@@ -124,6 +127,7 @@ func (h *UserHandler) List(c *gin.Context) {
 			"email":           row.Email,
 			"user_group_id":   row.UserGroupID,
 			"daily_max_usage": row.DailyMaxUsage,
+			"rate_limit":      row.RateLimit,
 			"active":          row.Active,
 			"disabled":        row.Disabled,
 			"created_at":      row.CreatedAt,
@@ -155,6 +159,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 		"email":           user.Email,
 		"user_group_id":   user.UserGroupID,
 		"daily_max_usage": user.DailyMaxUsage,
+		"rate_limit":      user.RateLimit,
 		"active":          user.Active,
 		"disabled":        user.Disabled,
 		"created_at":      user.CreatedAt,
@@ -168,6 +173,7 @@ type updateUserRequest struct {
 	Email         *string  `json:"email"`
 	UserGroupID   *uint64  `json:"user_group_id"`
 	DailyMaxUsage *float64 `json:"daily_max_usage"`
+	RateLimit     *int     `json:"rate_limit"`
 	Disabled      *bool    `json:"disabled"`
 }
 
@@ -203,6 +209,9 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 	if body.DailyMaxUsage != nil {
 		updates["daily_max_usage"] = *body.DailyMaxUsage
+	}
+	if body.RateLimit != nil {
+		updates["rate_limit"] = *body.RateLimit
 	}
 	if body.Disabled != nil {
 		updates["disabled"] = *body.Disabled

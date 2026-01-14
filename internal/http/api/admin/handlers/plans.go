@@ -89,6 +89,7 @@ type createPlanRequest struct {
 	SortOrder     int             `json:"sort_order"`     // Display order.
 	TotalQuota    float64         `json:"total_quota"`    // Total quota value.
 	DailyQuota    float64         `json:"daily_quota"`    // Daily quota value.
+	RateLimit     int             `json:"rate_limit"`     // Rate limit per second.
 	IsEnabled     *bool           `json:"is_enabled"`     // Optional active flag.
 }
 
@@ -129,6 +130,7 @@ func (h *PlanHandler) Create(c *gin.Context) {
 		SortOrder:     body.SortOrder,
 		TotalQuota:    body.TotalQuota,
 		DailyQuota:    body.DailyQuota,
+		RateLimit:     body.RateLimit,
 		IsEnabled:     isEnabled,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -198,6 +200,7 @@ type updatePlanRequest struct {
 	SortOrder     *int             `json:"sort_order"`     // Optional display order.
 	TotalQuota    *float64         `json:"total_quota"`    // Optional total quota.
 	DailyQuota    *float64         `json:"daily_quota"`    // Optional daily quota.
+	RateLimit     *int             `json:"rate_limit"`     // Optional rate limit per second.
 	IsEnabled     *bool            `json:"is_enabled"`     // Optional active flag.
 }
 
@@ -270,6 +273,9 @@ func (h *PlanHandler) Update(c *gin.Context) {
 	}
 	if body.DailyQuota != nil {
 		updates["daily_quota"] = *body.DailyQuota
+	}
+	if body.RateLimit != nil {
+		updates["rate_limit"] = *body.RateLimit
 	}
 	if body.IsEnabled != nil {
 		updates["is_enabled"] = *body.IsEnabled
@@ -349,6 +355,7 @@ func (h *PlanHandler) formatPlan(p *models.Plan) gin.H {
 		"sort_order":     p.SortOrder,
 		"total_quota":    p.TotalQuota,
 		"daily_quota":    p.DailyQuota,
+		"rate_limit":     p.RateLimit,
 		"is_enabled":     p.IsEnabled,
 		"created_at":     p.CreatedAt,
 		"updated_at":     p.UpdatedAt,

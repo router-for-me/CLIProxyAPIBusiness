@@ -37,6 +37,7 @@ type createAuthFileRequest struct {
 	ProxyURL    *string             `json:"proxy_url"`
 	Content     map[string]any      `json:"content"`
 	IsAvailable *bool               `json:"is_available"`
+	RateLimit   int                 `json:"rate_limit"`
 }
 
 type importAuthFilesFailure struct {
@@ -110,6 +111,7 @@ func (h *AuthFileHandler) Create(c *gin.Context) {
 		ProxyURL:    proxyURL,
 		Content:     contentJSON,
 		IsAvailable: isAvailable,
+		RateLimit:   body.RateLimit,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -130,6 +132,7 @@ func (h *AuthFileHandler) Create(c *gin.Context) {
 		"proxy_url":     auth.ProxyURL,
 		"content":       auth.Content,
 		"is_available":  auth.IsAvailable,
+		"rate_limit":    auth.RateLimit,
 		"created_at":    auth.CreatedAt,
 		"updated_at":    auth.UpdatedAt,
 	})
@@ -358,6 +361,7 @@ func (h *AuthFileHandler) List(c *gin.Context) {
 			"proxy_url":     row.ProxyURL,
 			"content":       row.Content,
 			"is_available":  row.IsAvailable,
+			"rate_limit":    row.RateLimit,
 			"created_at":    row.CreatedAt,
 			"updated_at":    row.UpdatedAt,
 		}
@@ -398,6 +402,7 @@ func (h *AuthFileHandler) Get(c *gin.Context) {
 		"proxy_url":     auth.ProxyURL,
 		"content":       auth.Content,
 		"is_available":  auth.IsAvailable,
+		"rate_limit":    auth.RateLimit,
 		"created_at":    auth.CreatedAt,
 		"updated_at":    auth.UpdatedAt,
 	}
@@ -412,6 +417,7 @@ type updateAuthFileRequest struct {
 	ProxyURL    *string              `json:"proxy_url"`
 	Content     map[string]any       `json:"content"`
 	IsAvailable *bool                `json:"is_available"`
+	RateLimit   *int                 `json:"rate_limit"`
 }
 
 // Update modifies an auth file entry.
@@ -448,6 +454,9 @@ func (h *AuthFileHandler) Update(c *gin.Context) {
 	}
 	if body.IsAvailable != nil {
 		updates["is_available"] = *body.IsAvailable
+	}
+	if body.RateLimit != nil {
+		updates["rate_limit"] = *body.RateLimit
 	}
 
 	res := h.db.WithContext(c.Request.Context()).Model(&models.Auth{}).Where("id = ?", id).Updates(updates)

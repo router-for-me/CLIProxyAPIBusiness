@@ -75,6 +75,9 @@ func migratePostgres(conn *gorm.DB) error {
 	if errSeed := ensureAutoAssignProxySetting(conn); errSeed != nil {
 		return errSeed
 	}
+	if errSeed := ensureRateLimitSetting(conn); errSeed != nil {
+		return errSeed
+	}
 	if errAuthGroup := migrateAuthGroupIDsPostgres(conn); errAuthGroup != nil {
 		return errAuthGroup
 	}
@@ -713,6 +716,9 @@ func migrateSQLite(conn *gorm.DB) error {
 	if errSeed := ensureAutoAssignProxySetting(conn); errSeed != nil {
 		return errSeed
 	}
+	if errSeed := ensureRateLimitSetting(conn); errSeed != nil {
+		return errSeed
+	}
 
 	if errDropPayloadIndex := conn.Exec(`
 		DROP INDEX IF EXISTS idx_model_payload_rules_enabled
@@ -1135,6 +1141,11 @@ func ensureAutoAssignProxySetting(conn *gorm.DB) error {
 		internalsettings.AutoAssignProxyKey,
 		internalsettings.DefaultAutoAssignProxy,
 	)
+}
+
+// ensureRateLimitSetting ensures RATE_LIMIT exists with defaults.
+func ensureRateLimitSetting(conn *gorm.DB) error {
+	return ensureIntSetting(conn, internalsettings.RateLimitKey, internalsettings.DefaultRateLimit)
 }
 
 // ensureIntSetting ensures an integer setting exists and defaults when empty.

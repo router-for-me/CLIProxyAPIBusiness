@@ -11,3 +11,4 @@ logs/
 AGENTS.md
 bin/
 internal/webui/dist
+.worktrees/

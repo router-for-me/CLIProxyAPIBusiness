@@ -27,6 +27,7 @@ func NewAuthGroupHandler(db *gorm.DB) *AuthGroupHandler {
 type createAuthGroupRequest struct {
 	Name      string `json:"name"`
 	IsDefault bool   `json:"is_default"`
+	RateLimit int    `json:"rate_limit"`
 }
 
 // Create creates a new auth group.
@@ -46,6 +47,7 @@ func (h *AuthGroupHandler) Create(c *gin.Context) {
 	group := models.AuthGroup{
 		Name:      name,
 		IsDefault: body.IsDefault,
+		RateLimit: body.RateLimit,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -67,6 +69,7 @@ func (h *AuthGroupHandler) Create(c *gin.Context) {
 		"id":         group.ID,
 		"name":       group.Name,
 		"is_default": group.IsDefault,
+		"rate_limit": group.RateLimit,
 		"created_at": group.CreatedAt,
 		"updated_at": group.UpdatedAt,
 	})
@@ -101,6 +104,7 @@ func (h *AuthGroupHandler) List(c *gin.Context) {
 			"id":         row.ID,
 			"name":       row.Name,
 			"is_default": row.IsDefault,
+			"rate_limit": row.RateLimit,
 			"created_at": row.CreatedAt,
 			"updated_at": row.UpdatedAt,
 		})
@@ -128,6 +132,7 @@ func (h *AuthGroupHandler) Get(c *gin.Context) {
 		"id":         group.ID,
 		"name":       group.Name,
 		"is_default": group.IsDefault,
+		"rate_limit": group.RateLimit,
 		"created_at": group.CreatedAt,
 		"updated_at": group.UpdatedAt,
 	})
@@ -137,6 +142,7 @@ func (h *AuthGroupHandler) Get(c *gin.Context) {
 type updateAuthGroupRequest struct {
 	Name      *string `json:"name"`
 	IsDefault *bool   `json:"is_default"`
+	RateLimit *int    `json:"rate_limit"`
 }
 
 // Update modifies an auth group.
@@ -167,6 +173,9 @@ func (h *AuthGroupHandler) Update(c *gin.Context) {
 		}
 		if body.IsDefault != nil {
 			updates["is_default"] = *body.IsDefault
+		}
+		if body.RateLimit != nil {
+			updates["rate_limit"] = *body.RateLimit
 		}
 
 		res := tx.Model(&models.AuthGroup{}).Where("id = ?", id).Updates(updates)

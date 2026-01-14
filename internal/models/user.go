@@ -18,6 +18,7 @@ type User struct {
 	Plan   *Plan   `gorm:"foreignKey:PlanID"` // Active plan.
 
 	DailyMaxUsage float64 `gorm:"type:decimal(20,10);not null;default:0"` // Daily usage cap.
+	RateLimit     int     `gorm:"not null;default:0"`                     // Rate limit per second.
 
 	Active   bool `gorm:"not null;default:true"`  // Whether the user can sign in.
 	Disabled bool `gorm:"not null;default:false"` // Explicit disable flag.

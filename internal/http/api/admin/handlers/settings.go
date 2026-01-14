@@ -38,7 +38,13 @@ var positiveIntSettingKeys = map[string]struct{}{
 	internalsettings.QuotaPollMaxConcurrencyKey:  {},
 }
 
+var nonNegativeIntSettingKeys = map[string]struct{}{
+	internalsettings.RateLimitKey:        {},
+	internalsettings.RateLimitRedisDBKey: {},
+}
+
 var errPositiveIntegerValue = errors.New("value must be a positive integer")
+var errNonNegativeIntegerValue = errors.New("value must be a non-negative integer")
 
 // Create validates and inserts a setting, then refreshes the snapshot.
 func (h *SettingHandler) Create(c *gin.Context) {
@@ -215,6 +221,12 @@ func (h *SettingHandler) refreshDBConfigSnapshot(ctx context.Context) error {
 
 func validateSettingValue(key string, value json.RawMessage) error {
 	if _, ok := positiveIntSettingKeys[key]; !ok {
+		if _, okNonNegative := nonNegativeIntSettingKeys[key]; !okNonNegative {
+			return nil
+		}
+		if _, ok := parseNonNegativeInt(value); !ok {
+			return errNonNegativeIntegerValue
+		}
 		return nil
 	}
 	if _, ok := parsePositiveInt(value); !ok {
@@ -246,6 +258,36 @@ func parsePositiveInt(raw json.RawMessage) (int, bool) {
 			return 0, false
 		}
 		if parsedFloat <= 0 || parsedFloat != math.Trunc(parsedFloat) {
+			return 0, false
+		}
+		return int(parsedFloat), true
+	}
+	return 0, false
+}
+
+func parseNonNegativeInt(raw json.RawMessage) (int, bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return 0, false
+	}
+	var parsedInt int
+	if errUnmarshalInt := json.Unmarshal(raw, &parsedInt); errUnmarshalInt == nil {
+		return parsedInt, parsedInt >= 0
+	}
+	var parsedString string
+	if errUnmarshalString := json.Unmarshal(raw, &parsedString); errUnmarshalString == nil {
+		parsed, errParse := strconv.Atoi(strings.TrimSpace(parsedString))
+		if errParse != nil {
+			return 0, false
+		}
+		return parsed, parsed >= 0
+	}
+	var parsedFloat float64
+	if errUnmarshalFloat := json.Unmarshal(raw, &parsedFloat); errUnmarshalFloat == nil {
+		if math.IsNaN(parsedFloat) || math.IsInf(parsedFloat, 0) {
+			return 0, false
+		}
+		if parsedFloat < 0 || parsedFloat != math.Trunc(parsedFloat) {
 			return 0, false
 		}
 		return int(parsedFloat), true
