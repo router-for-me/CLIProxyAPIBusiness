@@ -4,16 +4,17 @@ services:
     container_name: "cpab-postgres"
     restart: unless-stopped
     environment:
-      POSTGRES_USER: "cpab"
-      POSTGRES_PASSWORD: "your-password" # Change this to a secure password
-      POSTGRES_DB: "cpab"
+      POSTGRES_USER: ${POSTGRES_USER:-cpab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-insecure-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-cpab}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cpab -d cpab"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cpab} -d ${POSTGRES_DB:-cpab}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
   cpab:
     image: eceasy/cli-proxy-api-business:latest
     pull_policy: always
@@ -23,9 +24,10 @@ services:
     container_name: "cpab"
     restart: unless-stopped
     environment:
-      DB_CONNECTION: "postgres://cpab:your-password@postgres:5432/cpab?sslmode=disable" # Change "your-password" to the password you set above
-      JWT_SECRET: "5ef293eb2cb7b3b8ec93a009b27a29c0" # Change this to a secure random string
-      JWT_EXPIRY: "720h" # Change this to your desired expiry duration
+      # Construct connection string from individual variables
+      DB_CONNECTION: "postgres://${POSTGRES_USER:-cpab}:${POSTGRES_PASSWORD:-insecure-change-me}@postgres:5432/${POSTGRES_DB:-cpab}?sslmode=disable"
+      JWT_SECRET: ${JWT_SECRET:-insecure-jwt-secret-change-me}
+      JWT_EXPIRY: ${JWT_EXPIRY:-720h}
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,5 +35,3 @@ services:
       - "8318:8318"
     working_dir: /CLIProxyAPIBusiness
     command: ./cpab
-volumes:
-  postgres_data:

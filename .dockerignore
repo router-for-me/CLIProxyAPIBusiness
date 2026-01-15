@@ -1,0 +1,54 @@
+# Version Control
+.git
+.gitignore
+.dockerignore
+.gitmodules
+.worktrees/
+
+# Secrets & Configuration
+# IMPORTANT: Never build secrets into the image
+.env
+.env.*
+config.yaml
+config/config.yaml
+
+# Local Build Artifacts
+# We want Docker to build from source, not use local binaries
+bin/
+internal/webui/dist
+*.exe
+
+# Frontend Dependencies & Build
+# Prevent sending local node_modules to Docker daemon (huge performance gain)
+web/node_modules
+web/dist
+web/.next
+web/.cache
+
+# Runtime Data
+data/
+auths/
+var/
+
+# Logs & Temp
+logs/
+test-output/
+temp/
+conv/
+refs/
+
+# Documentation & Dev Tools
+docs/
+*.md
+LICENSE
+Makefile
+docker-compose.yml
+
+# IDE & System
+.DS_Store
+.vscode/
+.idea/
+.codex/
+.claude/
+.gemini/
+.serena/

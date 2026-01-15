@@ -1,15 +1,38 @@
+# Environment & Configuration
 .env
 .env.*
+!.env.example
 config.yaml
 config/config.yaml
-test-output
-pgstore
-var/
-static/
-.DS_Store
-logs/
-AGENTS.md
+
+# Build Artifacts & Binaries
 bin/
 internal/webui/dist
+test-output
+
+# Data & Storage
+data/
+pgstore
+var/
+
+# System & IDE
+.DS_Store
 .worktrees/
+.vscode/
+.codex/
+.claude/
+.gemini/
+.serena/
+.agent/
+.agents/
+.opencode/
+.bmad/
+_bmad/
+_bmad-output/
+
+# Documentation & Assets
+AGENTS.md
+CLAUDE.md
+GEMINI.md
 docs/
+logs/
