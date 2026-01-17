@@ -10,7 +10,9 @@ services:
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cpab} -d ${POSTGRES_DB:-cpab}"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-cpab} -d ${POSTGRES_DB:-cpab}
       interval: 5s
       timeout: 5s
       retries: 5
@@ -32,6 +34,6 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8318:8318"
+      - "${SERVER_PORT:-8318}:8318"
     working_dir: /CLIProxyAPIBusiness
     command: ./cpab
