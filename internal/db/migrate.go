@@ -61,6 +61,7 @@ func migratePostgres(conn *gorm.DB) error {
 		&models.Bill{},
 		&models.BillingRule{},
 		&models.ModelMapping{},
+		&models.ModelReference{},
 		&models.UserModelAuthBinding{},
 		&models.ModelPayloadRule{},
 		&models.ProviderAPIKey{},
@@ -350,6 +351,48 @@ func migratePostgres(conn *gorm.DB) error {
 			`,
 		},
 		{
+			name: "idx_models_provider_name",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_models_provider_name
+				ON models (provider_name)
+			`,
+		},
+		{
+			name: "idx_models_model_name",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_models_model_name
+				ON models (model_name)
+			`,
+		},
+		{
+			name: "idx_models_last_seen_at",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_models_last_seen_at
+				ON models (last_seen_at)
+			`,
+		},
+		{
+			name: "idx_models_provider_name",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_models_provider_name
+				ON models (provider_name)
+			`,
+		},
+		{
+			name: "idx_models_model_name",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_models_model_name
+				ON models (model_name)
+			`,
+		},
+		{
+			name: "idx_models_last_seen_at",
+			sql: `
+				CREATE INDEX IF NOT EXISTS idx_models_last_seen_at
+				ON models (last_seen_at)
+			`,
+		},
+		{
 			name: "idx_auths_available_id",
 			sql: `
 				CREATE INDEX IF NOT EXISTS idx_auths_available_id
@@ -618,6 +661,28 @@ func migratePostgres(conn *gorm.DB) error {
 			`,
 		},
 		{
+			name: "idx_models_provider_name",
+			trgmSQL: `
+				CREATE INDEX IF NOT EXISTS idx_models_provider_name_trgm
+				ON models USING gin (provider_name gin_trgm_ops)
+			`,
+			lowerSQL: `
+				CREATE INDEX IF NOT EXISTS idx_models_provider_name_lower
+				ON models (LOWER(provider_name))
+			`,
+		},
+		{
+			name: "idx_models_model_name",
+			trgmSQL: `
+				CREATE INDEX IF NOT EXISTS idx_models_model_name_trgm
+				ON models USING gin (model_name gin_trgm_ops)
+			`,
+			lowerSQL: `
+				CREATE INDEX IF NOT EXISTS idx_models_model_name_lower
+				ON models (LOWER(model_name))
+			`,
+		},
+		{
 			name: "idx_prepaid_cards_name",
 			trgmSQL: `
 				CREATE INDEX IF NOT EXISTS idx_prepaid_cards_name_trgm
@@ -729,6 +794,7 @@ func migrateSQLite(conn *gorm.DB) error {
 		&models.Bill{},
 		&models.BillingRule{},
 		&models.ModelMapping{},
+		&models.ModelReference{},
 		&models.UserModelAuthBinding{},
 		&models.ModelPayloadRule{},
 		&models.ProviderAPIKey{},
@@ -1717,6 +1783,7 @@ func fixSQLiteTimestampColumns(conn *gorm.DB) error {
 		&models.Bill{},
 		&models.BillingRule{},
 		&models.ModelMapping{},
+		&models.ModelReference{},
 		&models.ModelPayloadRule{},
 		&models.ProviderAPIKey{},
 		&models.PrepaidCard{},

@@ -20,6 +20,7 @@ import (
 	relayhttp "github.com/router-for-me/CLIProxyAPIBusiness/internal/http"
 	internalhttp "github.com/router-for-me/CLIProxyAPIBusiness/internal/http/api/admin"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/http/api/front"
+	"github.com/router-for-me/CLIProxyAPIBusiness/internal/modelreference"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/modelregistry"
 	"github.com/router-for-me/CLIProxyAPIBusiness/internal/quota"
 	internalsettings "github.com/router-for-me/CLIProxyAPIBusiness/internal/settings"
@@ -265,6 +266,9 @@ func RunServer(ctx context.Context, cfg config.AppConfig, defaultPort int) error
 	service.RegisterUsagePlugin(internalusage.NewGormUsagePlugin(conn))
 	if quotaPoller := quota.NewPoller(conn, coreManager); quotaPoller != nil {
 		quotaPoller.Start(ctx)
+	}
+	if modelSyncer := modelreference.NewSyncer(conn); modelSyncer != nil {
+		modelSyncer.Start(ctx)
 	}
 
 	serverAccessMgr.SetProviders(nil)
