@@ -299,8 +299,10 @@ func (h *AuthFileHandler) Import(c *gin.Context) {
 		errCreate := h.db.WithContext(c.Request.Context()).Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "key"}},
 			DoUpdates: clause.Assignments(map[string]any{
-				"content":    auth.Content,
-				"updated_at": now,
+				"auth_group_id": auth.AuthGroupID,
+				"proxy_url":     auth.ProxyURL,
+				"content":       auth.Content,
+				"updated_at":    now,
 			}),
 		}).Create(&auth).Error
 		if errCreate != nil {
