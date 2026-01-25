@@ -180,6 +180,8 @@ var definitions = []Definition{
 	newDefinition("POST", "/v0/admin/api-keys", "Create API Key", "API Keys"),
 	newDefinition("GET", "/v0/admin/api-keys", "List API Keys", "API Keys"),
 	newDefinition("DELETE", "/v0/admin/api-keys/:id", "Revoke API Key", "API Keys"),
+	newDefinition("POST", "/v0/admin/users/:id/api-keys", "Create User API Key", "API Keys"),
+	newDefinition("GET", "/v0/admin/users/:id/api-keys", "List User API Keys", "API Keys"),
 
 	newDefinition("POST", "/v0/admin/provider-api-keys", "Create Provider API Key", "Provider API Keys"),
 	newDefinition("GET", "/v0/admin/provider-api-keys", "List Provider API Keys", "Provider API Keys"),

@@ -62,6 +62,8 @@ func RegisterAdminRoutes(r *gin.Engine, db *gorm.DB, jwtCfg config.JWTConfig, co
 	authed.POST("/api-keys", apiKeyHandler.Create)
 	authed.GET("/api-keys", apiKeyHandler.List)
 	authed.DELETE("/api-keys/:id", apiKeyHandler.Revoke)
+	authed.POST("/users/:id/api-keys", apiKeyHandler.CreateForUser)
+	authed.GET("/users/:id/api-keys", apiKeyHandler.ListByUser)
 
 	providerKeyHandler := handlers.NewProviderAPIKeyHandler(db, configPath)
 	authed.POST("/provider-api-keys", providerKeyHandler.Create)

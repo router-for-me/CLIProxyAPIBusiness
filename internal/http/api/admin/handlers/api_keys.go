@@ -64,6 +64,93 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	})
 }
 
+// CreateForUser creates an API key for a specific user.
+func (h *APIKeyHandler) CreateForUser(c *gin.Context) {
+	userID, errParse := strconv.ParseUint(strings.TrimSpace(c.Param("id")), 10, 64)
+	if errParse != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+
+	var body struct {
+		Name string `json:"name"`
+	}
+	if errBind := c.ShouldBindJSON(&body); errBind != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing name"})
+		return
+	}
+
+	token, errGenerate := security.GenerateAPIKey()
+	if errGenerate != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "generate api key failed"})
+		return
+	}
+
+	now := time.Now().UTC()
+	row := models.APIKey{
+		UserID:    &userID,
+		Name:      name,
+		APIKey:    token,
+		IsAdmin:   false,
+		Active:    true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if errCreate := h.db.WithContext(c.Request.Context()).Create(&row).Error; errCreate != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "create api key failed"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":    row.ID,
+		"name":  row.Name,
+		"token": token,
+	})
+}
+
+// ListByUser returns API keys for a specific user.
+func (h *APIKeyHandler) ListByUser(c *gin.Context) {
+	userID, errParse := strconv.ParseUint(strings.TrimSpace(c.Param("id")), 10, 64)
+	if errParse != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+
+	var rows []models.APIKey
+	if errFind := h.db.WithContext(c.Request.Context()).
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Find(&rows).Error; errFind != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "list api keys failed"})
+		return
+	}
+
+	out := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		prefix := ""
+		if len(row.APIKey) >= 8 {
+			prefix = row.APIKey[:8] + "········" + row.APIKey[len(row.APIKey)-4:]
+		}
+		out = append(out, gin.H{
+			"id":           row.ID,
+			"name":         row.Name,
+			"key":          row.APIKey,
+			"key_prefix":   prefix,
+			"active":       row.Active,
+			"expires_at":   row.ExpiresAt,
+			"revoked_at":   row.RevokedAt,
+			"last_used_at": row.LastUsedAt,
+			"created_at":   row.CreatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"api_keys": out})
+}
+
 // List returns all API keys.
 func (h *APIKeyHandler) List(c *gin.Context) {
 	var rows []models.APIKey
