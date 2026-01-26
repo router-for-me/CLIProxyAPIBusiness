@@ -900,7 +900,9 @@ func (w *dbWatcher) pollPayloadRules(ctx context.Context, force bool) {
 // buildPayloadConfig converts payload rule rows into SDK payload configuration.
 func buildPayloadConfig(rows []payloadRuleRow) sdkconfig.PayloadConfig {
 	defaultRules := make([]sdkconfig.PayloadRule, 0)
+	defaultRawRules := make([]sdkconfig.PayloadRule, 0)
 	overrideRules := make([]sdkconfig.PayloadRule, 0)
+	overrideRawRules := make([]sdkconfig.PayloadRule, 0)
 
 	for _, row := range rows {
 		if !row.RuleEnabled || !row.MappingEnabled {
@@ -919,13 +921,37 @@ func buildPayloadConfig(rows []payloadRuleRow) sdkconfig.PayloadConfig {
 			continue
 		}
 		defaultParams := make(map[string]any)
+		defaultRawParams := make(map[string]any)
 		overrideParams := make(map[string]any)
+		overrideRawParams := make(map[string]any)
 		for _, entry := range entries {
 			path := strings.TrimSpace(entry.Path)
 			if path == "" {
 				continue
 			}
 			ruleType := strings.ToLower(strings.TrimSpace(entry.RuleType))
+			isRaw := strings.EqualFold(strings.TrimSpace(entry.ValueType), "json")
+			if isRaw {
+				value := entry.Value
+				if value == nil {
+					value = []byte("null")
+				} else if s, ok := value.(string); ok {
+					trimmed := strings.TrimSpace(s)
+					if json.Valid([]byte(trimmed)) {
+						value = trimmed
+					} else if raw, errMarshal := json.Marshal(s); errMarshal == nil {
+						value = raw
+					} else {
+						continue
+					}
+				}
+				if ruleType == "override" {
+					overrideRawParams[path] = value
+					continue
+				}
+				defaultRawParams[path] = value
+				continue
+			}
 			if ruleType == "override" {
 				overrideParams[path] = entry.Value
 				continue
@@ -943,17 +969,31 @@ func buildPayloadConfig(rows []payloadRuleRow) sdkconfig.PayloadConfig {
 				Params: defaultParams,
 			})
 		}
+		if len(defaultRawParams) > 0 {
+			defaultRawRules = append(defaultRawRules, sdkconfig.PayloadRule{
+				Models: []sdkconfig.PayloadModelRule{modelRule},
+				Params: defaultRawParams,
+			})
+		}
 		if len(overrideParams) > 0 {
 			overrideRules = append(overrideRules, sdkconfig.PayloadRule{
 				Models: []sdkconfig.PayloadModelRule{modelRule},
 				Params: overrideParams,
 			})
 		}
+		if len(overrideRawParams) > 0 {
+			overrideRawRules = append(overrideRawRules, sdkconfig.PayloadRule{
+				Models: []sdkconfig.PayloadModelRule{modelRule},
+				Params: overrideRawParams,
+			})
+		}
 	}
 
 	return sdkconfig.PayloadConfig{
-		Default:  defaultRules,
-		Override: overrideRules,
+		Default:     defaultRules,
+		DefaultRaw:  defaultRawRules,
+		Override:    overrideRules,
+		OverrideRaw: overrideRawRules,
 	}
 }
 
